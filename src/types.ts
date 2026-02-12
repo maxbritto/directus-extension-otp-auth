@@ -11,8 +11,6 @@ export interface OtpCode {
 export interface DirectusUser {
 	id: string;
 	role: string;
-	app_access: boolean;
-	admin_access: boolean;
 }
 
 export interface IOtpStore {

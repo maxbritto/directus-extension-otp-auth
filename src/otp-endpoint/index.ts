@@ -90,12 +90,12 @@ function createUserLookup(services: Record<string, any>, getSchema: () => Promis
 			const schema = await getSchema();
 			const usersService = new services.UsersService({
 				schema,
-				accountability: null,
+				accountability: { admin: true },
 			});
 
 			const users = await usersService.readByQuery({
 				filter: { email: { _eq: email } },
-				fields: ['id', 'role', 'app_access', 'admin_access'],
+				fields: ['id', 'role'],
 				limit: 1,
 			});
 
@@ -167,14 +167,35 @@ function createTokenGenerator(
 
 			const userRow = await database('directus_users')
 				.where('id', userId)
-				.select('id', 'role', 'app_access', 'admin_access')
+				.select('id', 'role')
 				.first();
+
+			// Resolve app_access / admin_access from directus_policies via directus_access.
+			// This matches the logic in Directus 11.9.0's fetchGlobalAccessForQuery:
+			// access is granted by policies linked to the user directly OR via their role.
+			// NOTE: This does not walk the role hierarchy (parent roles). All our roles
+			// currently have parent: NULL. If role hierarchy is added later, ancestor
+			// roles must be included in the query.
+			const accessRows = await database('directus_access')
+				.leftJoin('directus_policies', 'directus_policies.id', 'directus_access.policy')
+				.where(function () {
+					this.where('directus_access.user', userId)
+						.orWhere('directus_access.role', userRow?.role ?? null);
+				})
+				.select('directus_policies.app_access', 'directus_policies.admin_access');
+
+			let adminAccess = false;
+			let appAccess = false;
+			for (const row of accessRows) {
+				adminAccess = adminAccess || !!row.admin_access;
+				appAccess = appAccess || adminAccess || !!row.app_access;
+			}
 
 			const payload = {
 				id: userId,
 				role: userRow?.role ?? null,
-				app_access: userRow?.app_access ?? false,
-				admin_access: userRow?.admin_access ?? false,
+				app_access: appAccess,
+				admin_access: adminAccess,
 				iss: 'directus',
 			};
 
@@ -235,7 +256,7 @@ export default defineEndpoint({
 				const result = await manager.requestOtp(email);
 				res.status(200).json(result);
 			} catch (error) {
-				logger.error('OTP request error:', error);
+				logger.error(error, 'OTP request error');
 				res.status(500).json({
 					errors: [{ message: 'Internal server error.', extensions: { code: 'INTERNAL_SERVER_ERROR' } }],
 				});
@@ -302,7 +323,7 @@ export default defineEndpoint({
 					}
 				}
 			} catch (error) {
-				logger.error('OTP verify error:', error);
+				logger.error(error, 'OTP verify error');
 				res.status(500).json({
 					errors: [{ message: 'Internal server error.', extensions: { code: 'INTERNAL_SERVER_ERROR' } }],
 				});

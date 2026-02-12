@@ -84,8 +84,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const { manager, store, mailSender } = createManager({ userLookup });
@@ -107,8 +105,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const { manager, store } = createManager({ userLookup });
@@ -128,8 +124,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const config: OtpConfig = { ...DEFAULT_CONFIG, codeTtlMinutes: 5 };
@@ -151,8 +145,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const { manager, store, mailSender } = createManager({ userLookup });
@@ -185,8 +177,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const { manager, mailSender } = createManager({ store, userLookup });
@@ -215,8 +205,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const store = createMockStore();
@@ -242,8 +230,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const { manager, tokenGenerator } = createManager({ store, userLookup });
@@ -268,8 +254,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const { manager } = createManager({ store, userLookup });
@@ -382,8 +366,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const config: OtpConfig = { ...DEFAULT_CONFIG, maxAttempts: 5 };
@@ -407,8 +389,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const tokenGenerator = createMockTokenGenerator();
@@ -433,8 +413,6 @@ describe('OtpAuthManager', () => {
 			userLookup.findByEmail.mockResolvedValue({
 				id: 'user-1',
 				role: 'role-1',
-				app_access: true,
-				admin_access: false,
 			});
 
 			const tokenGenerator = createMockTokenGenerator();
