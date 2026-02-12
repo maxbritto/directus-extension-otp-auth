@@ -196,7 +196,6 @@ function createTokenGenerator(
 				role: userRow?.role ?? null,
 				app_access: appAccess,
 				admin_access: adminAccess,
-				iss: 'directus',
 			};
 
 			const accessToken = jwt.sign(payload, secret, {
