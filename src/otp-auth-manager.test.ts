@@ -1,5 +1,5 @@
 import { OtpAuthManager } from './otp-auth-manager';
-import type { IOtpStore, IUserLookup, IMailSender, ITokenGenerator, OtpCode, OtpConfig } from './types';
+import type { IOtpStore, IUserLookup, IMailSender, ITokenGenerator, OtpCode, OtpConfig, RequestInfo } from './types';
 
 function createMockStore(): jest.Mocked<IOtpStore> {
 	return {
@@ -38,6 +38,12 @@ const DEFAULT_CONFIG: OtpConfig = {
 	codeTtlMinutes: 10,
 	maxAttempts: 3,
 	rateLimitSeconds: 60,
+};
+
+const DEFAULT_REQUEST_INFO: RequestInfo = {
+	ip: '127.0.0.1',
+	userAgent: 'test-agent',
+	origin: 'http://localhost',
 };
 
 function createManager(overrides?: {
@@ -242,7 +248,7 @@ describe('OtpAuthManager', () => {
 
 			const { manager, tokenGenerator } = createManager({ store, userLookup });
 
-			const result = await manager.verifyOtp('user@example.com', '654321');
+			const result = await manager.verifyOtp('user@example.com', '654321', DEFAULT_REQUEST_INFO);
 
 			expect(result).toEqual({
 				success: true,
@@ -251,7 +257,7 @@ describe('OtpAuthManager', () => {
 				expires: 900000,
 			});
 			expect(store.markAsUsed).toHaveBeenCalledWith('test-id');
-			expect(tokenGenerator.generateTokens).toHaveBeenCalledWith('user-1');
+			expect(tokenGenerator.generateTokens).toHaveBeenCalledWith('user-1', DEFAULT_REQUEST_INFO);
 		});
 
 		it('should normalize email to lowercase and trim when verifying', async () => {
@@ -268,7 +274,7 @@ describe('OtpAuthManager', () => {
 
 			const { manager } = createManager({ store, userLookup });
 
-			await manager.verifyOtp('  User@Example.COM  ', '654321');
+			await manager.verifyOtp('  User@Example.COM  ', '654321', DEFAULT_REQUEST_INFO);
 
 			expect(store.findLatestValidCode).toHaveBeenCalledWith('user@example.com');
 			expect(userLookup.findByEmail).toHaveBeenCalledWith('user@example.com');
@@ -277,7 +283,7 @@ describe('OtpAuthManager', () => {
 		it('should return invalid_code when no valid code found', async () => {
 			const { manager } = createManager();
 
-			const result = await manager.verifyOtp('user@example.com', '123456');
+			const result = await manager.verifyOtp('user@example.com', '123456', DEFAULT_REQUEST_INFO);
 
 			expect(result).toEqual({ success: false, error: 'invalid_code' });
 		});
@@ -290,7 +296,7 @@ describe('OtpAuthManager', () => {
 
 			const { manager } = createManager({ store });
 
-			const result = await manager.verifyOtp('user@example.com', '654321');
+			const result = await manager.verifyOtp('user@example.com', '654321', DEFAULT_REQUEST_INFO);
 
 			expect(result).toEqual({ success: false, error: 'too_many_attempts' });
 			expect(store.incrementAttempts).not.toHaveBeenCalled();
@@ -304,7 +310,7 @@ describe('OtpAuthManager', () => {
 
 			const { manager } = createManager({ store });
 
-			const result = await manager.verifyOtp('user@example.com', '654321');
+			const result = await manager.verifyOtp('user@example.com', '654321', DEFAULT_REQUEST_INFO);
 
 			expect(result).toEqual({ success: false, error: 'too_many_attempts' });
 		});
@@ -317,7 +323,7 @@ describe('OtpAuthManager', () => {
 
 			const { manager } = createManager({ store });
 
-			const result = await manager.verifyOtp('user@example.com', '999999');
+			const result = await manager.verifyOtp('user@example.com', '999999', DEFAULT_REQUEST_INFO);
 
 			expect(result).toEqual({ success: false, error: 'invalid_code' });
 			expect(store.incrementAttempts).toHaveBeenCalledWith('test-id');
@@ -331,7 +337,7 @@ describe('OtpAuthManager', () => {
 
 			const { manager } = createManager({ store });
 
-			const result = await manager.verifyOtp('user@example.com', '111111');
+			const result = await manager.verifyOtp('user@example.com', '111111', DEFAULT_REQUEST_INFO);
 
 			expect(result).toEqual({ success: false, error: 'invalid_code' });
 			expect(store.incrementAttempts).toHaveBeenCalledWith('test-id');
@@ -346,7 +352,7 @@ describe('OtpAuthManager', () => {
 
 			const { manager } = createManager({ store, userLookup });
 
-			const result = await manager.verifyOtp('user@example.com', '654321');
+			const result = await manager.verifyOtp('user@example.com', '654321', DEFAULT_REQUEST_INFO);
 
 			expect(result).toEqual({ success: false, error: 'invalid_code' });
 			expect(store.markAsUsed).toHaveBeenCalledWith('test-id');
@@ -361,7 +367,7 @@ describe('OtpAuthManager', () => {
 			const config: OtpConfig = { ...DEFAULT_CONFIG, maxAttempts: 5 };
 			const { manager } = createManager({ store, config });
 
-			const result = await manager.verifyOtp('user@example.com', '654321');
+			const result = await manager.verifyOtp('user@example.com', '654321', DEFAULT_REQUEST_INFO);
 
 			expect(result).toEqual({ success: false, error: 'too_many_attempts' });
 		});
@@ -383,7 +389,7 @@ describe('OtpAuthManager', () => {
 			const config: OtpConfig = { ...DEFAULT_CONFIG, maxAttempts: 5 };
 			const { manager } = createManager({ store, userLookup, config });
 
-			const result = await manager.verifyOtp('user@example.com', '654321');
+			const result = await manager.verifyOtp('user@example.com', '654321', DEFAULT_REQUEST_INFO);
 
 			expect(result).toEqual({
 				success: true,
@@ -391,6 +397,32 @@ describe('OtpAuthManager', () => {
 				refresh_token: 'test-refresh-token',
 				expires: 900000,
 			});
+		});
+
+		it('should forward requestInfo to token generator', async () => {
+			const store = createMockStore();
+			store.findLatestValidCode.mockResolvedValue(makeOtpCode({ code: '654321' }));
+
+			const userLookup = createMockUserLookup();
+			userLookup.findByEmail.mockResolvedValue({
+				id: 'user-1',
+				role: 'role-1',
+				app_access: true,
+				admin_access: false,
+			});
+
+			const tokenGenerator = createMockTokenGenerator();
+			const { manager } = createManager({ store, userLookup, tokenGenerator });
+
+			const customRequestInfo: RequestInfo = {
+				ip: '192.168.1.1',
+				userAgent: 'Custom-Agent/1.0',
+				origin: 'https://example.com',
+			};
+
+			await manager.verifyOtp('user@example.com', '654321', customRequestInfo);
+
+			expect(tokenGenerator.generateTokens).toHaveBeenCalledWith('user-1', customRequestInfo);
 		});
 
 		it('should mark code as used before generating tokens', async () => {
@@ -415,7 +447,7 @@ describe('OtpAuthManager', () => {
 
 			const { manager } = createManager({ store, userLookup, tokenGenerator });
 
-			await manager.verifyOtp('user@example.com', '654321');
+			await manager.verifyOtp('user@example.com', '654321', DEFAULT_REQUEST_INFO);
 
 			expect(callOrder).toEqual(['markAsUsed', 'generateTokens']);
 		});

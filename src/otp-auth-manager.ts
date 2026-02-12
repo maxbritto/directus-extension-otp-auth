@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from 'crypto';
-import type { IOtpStore, IUserLookup, IMailSender, ITokenGenerator, OtpVerifyResult, OtpConfig } from './types.js';
+import type { IOtpStore, IUserLookup, IMailSender, ITokenGenerator, OtpVerifyResult, OtpConfig, RequestInfo } from './types.js';
 
 export class OtpAuthManager {
 	private readonly store: IOtpStore;
@@ -54,7 +54,7 @@ export class OtpAuthManager {
 		return { success: true };
 	}
 
-	async verifyOtp(email: string, code: string): Promise<OtpVerifyResult> {
+	async verifyOtp(email: string, code: string, requestInfo: RequestInfo): Promise<OtpVerifyResult> {
 		const normalizedEmail = email.toLowerCase().trim();
 
 		// Find latest valid (unused + unexpired) code
@@ -84,7 +84,7 @@ export class OtpAuthManager {
 		}
 
 		// Generate tokens
-		const tokens = await this.tokenGenerator.generateTokens(user.id);
+		const tokens = await this.tokenGenerator.generateTokens(user.id, requestInfo);
 
 		return {
 			success: true,

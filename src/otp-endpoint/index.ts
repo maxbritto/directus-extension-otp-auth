@@ -1,8 +1,7 @@
 import { defineEndpoint } from '@directus/extensions-sdk';
 import jwt from 'jsonwebtoken';
-import { randomUUID } from 'crypto';
 import { OtpAuthManager } from '../otp-auth-manager.js';
-import type { IOtpStore, IUserLookup, IMailSender, ITokenGenerator, OtpCode, DirectusUser, OtpConfig } from '../types.js';
+import type { IOtpStore, IUserLookup, IMailSender, ITokenGenerator, OtpCode, DirectusUser, OtpConfig, RequestInfo } from '../types.js';
 import type { Knex } from 'knex';
 
 function parseMilliseconds(value: string, defaultMs: number): number {
@@ -158,7 +157,7 @@ function createTokenGenerator(
 	env: Record<string, any>,
 ): ITokenGenerator {
 	return {
-		async generateTokens(userId: string): Promise<{ access_token: string; refresh_token: string; expires: number }> {
+		async generateTokens(userId: string, requestInfo: RequestInfo): Promise<{ access_token: string; refresh_token: string; expires: number }> {
 			const secret = env['SECRET'] as string;
 			const accessTokenTtl = (env['ACCESS_TOKEN_TTL'] as string) || '15m';
 			const refreshTokenTtl = (env['REFRESH_TOKEN_TTL'] as string) || '7d';
@@ -184,18 +183,17 @@ function createTokenGenerator(
 				issuer: 'directus',
 			});
 
-			const refreshToken = randomUUID();
+			const { nanoid } = await import('nanoid');
+			const refreshToken = nanoid(64);
 
 			// Insert session in directus_sessions
 			await database('directus_sessions').insert({
 				token: refreshToken,
 				user: userId,
 				expires: new Date(Date.now() + refreshTokenMs),
-				ip: null,
-				user_agent: 'otp-auth',
-				share: null,
-				origin: null,
-				next_token: null,
+				ip: requestInfo.ip,
+				user_agent: requestInfo.userAgent,
+				origin: requestInfo.origin,
 			});
 
 			return {
@@ -228,7 +226,9 @@ export default defineEndpoint({
 			try {
 				const { email } = req.body as { email?: string };
 				if (!email) {
-					res.status(400).json({ error: 'Email is required' });
+					res.status(400).json({
+						errors: [{ message: 'Email is required.', extensions: { code: 'INVALID_PAYLOAD' } }],
+					});
 					return;
 				}
 
@@ -236,7 +236,9 @@ export default defineEndpoint({
 				res.status(200).json(result);
 			} catch (error) {
 				logger.error('OTP request error:', error);
-				res.status(500).json({ error: 'Internal server error' });
+				res.status(500).json({
+					errors: [{ message: 'Internal server error.', extensions: { code: 'INTERNAL_SERVER_ERROR' } }],
+				});
 			}
 		});
 
@@ -244,23 +246,66 @@ export default defineEndpoint({
 			try {
 				const { email, code } = req.body as { email?: string; code?: string };
 				if (!email || !code) {
-					res.status(400).json({ error: 'Email and code are required' });
+					res.status(400).json({
+						errors: [{ message: 'Email and code are required.', extensions: { code: 'INVALID_PAYLOAD' } }],
+					});
 					return;
 				}
 
-				const result = await manager.verifyOtp(email, code);
+				const requestInfo: RequestInfo = {
+					ip: req.ip ?? null,
+					userAgent: req.get('user-agent') ?? null,
+					origin: req.get('origin') ?? null,
+				};
+
+				const result = await manager.verifyOtp(email, code, requestInfo);
 				if (result.success) {
+					// Activity log
+					const schema = await getSchema();
+					const activityService = new services.ActivityService({ schema, knex: database });
+					const decoded = jwt.decode(result.access_token) as { id: string } | null;
+					const userId = decoded?.id ?? null;
+					if (userId) {
+						await activityService.createOne({
+							action: 'login',
+							user: userId,
+							ip: requestInfo.ip,
+							user_agent: requestInfo.userAgent,
+							origin: requestInfo.origin,
+							collection: 'directus_users',
+							item: userId,
+						});
+
+						// Update last_access
+						await database('directus_users').update({ last_access: new Date() }).where('id', userId);
+					}
+
+					// Clean up expired sessions
+					await database('directus_sessions').delete().where('expires', '<', new Date());
+
 					res.status(200).json({
-						access_token: result.access_token,
-						refresh_token: result.refresh_token,
-						expires: result.expires,
+						data: {
+							access_token: result.access_token,
+							expires: result.expires,
+							refresh_token: result.refresh_token,
+						},
 					});
 				} else {
-					res.status(401).json({ error: result.error });
+					if (result.error === 'too_many_attempts') {
+						res.status(401).json({
+							errors: [{ message: 'Too many attempts.', extensions: { code: 'REQUESTS_EXCEEDED' } }],
+						});
+					} else {
+						res.status(401).json({
+							errors: [{ message: 'Invalid OTP code.', extensions: { code: 'INVALID_OTP' } }],
+						});
+					}
 				}
 			} catch (error) {
 				logger.error('OTP verify error:', error);
-				res.status(500).json({ error: 'Internal server error' });
+				res.status(500).json({
+					errors: [{ message: 'Internal server error.', extensions: { code: 'INTERNAL_SERVER_ERROR' } }],
+				});
 			}
 		});
 	},

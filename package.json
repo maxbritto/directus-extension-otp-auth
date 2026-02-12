@@ -42,7 +42,8 @@
     "test": "jest"
   },
   "dependencies": {
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "nanoid": "^5.1.6"
   },
   "devDependencies": {
     "@directus/extensions-sdk": "14.0.0",

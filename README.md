@@ -64,21 +64,27 @@ Verify the OTP code and receive authentication tokens.
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1...",
-  "refresh_token": "a1b2c3d4-...",
-  "expires": 900000
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1...",
+    "expires": 900000,
+    "refresh_token": "V1StGXR8_Z5jdHi6B-myT..."
+  }
 }
 ```
 
-**Error response (401):**
+**Error responses (401):**
 
 ```json
 {
-  "error": "invalid_code"
+  "errors": [{ "message": "Invalid OTP code.", "extensions": { "code": "INVALID_OTP" } }]
 }
 ```
 
-Possible error values: `invalid_code`, `too_many_attempts`.
+```json
+{
+  "errors": [{ "message": "Too many attempts.", "extensions": { "code": "REQUESTS_EXCEEDED" } }]
+}
+```
 
 ## Configuration
 

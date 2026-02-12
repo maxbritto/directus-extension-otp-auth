@@ -32,8 +32,14 @@ export interface IMailSender {
 	sendOtpEmail(email: string, code: string): Promise<void>;
 }
 
+export interface RequestInfo {
+	ip: string | null;
+	userAgent: string | null;
+	origin: string | null;
+}
+
 export interface ITokenGenerator {
-	generateTokens(userId: string): Promise<{ access_token: string; refresh_token: string; expires: number }>;
+	generateTokens(userId: string, requestInfo: RequestInfo): Promise<{ access_token: string; refresh_token: string; expires: number }>;
 }
 
 export interface OtpVerifySuccess {
