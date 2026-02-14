@@ -1,23 +1,23 @@
 import { randomInt, randomUUID } from 'crypto';
-import type { IOtpStore, IUserLookup, IMailSender, ITokenGenerator, OtpVerifyResult, OtpConfig, RequestInfo } from './types.js';
+import type { IOtpStore, IUserLookup, IOtpDelivery, ITokenGenerator, OtpVerifyResult, OtpConfig, RequestInfo } from './types.js';
 
 export class OtpAuthManager {
 	private readonly store: IOtpStore;
 	private readonly userLookup: IUserLookup;
-	private readonly mailSender: IMailSender;
+	private readonly delivery: IOtpDelivery;
 	private readonly tokenGenerator: ITokenGenerator;
 	private readonly config: OtpConfig;
 
 	constructor(
 		store: IOtpStore,
 		userLookup: IUserLookup,
-		mailSender: IMailSender,
+		delivery: IOtpDelivery,
 		tokenGenerator: ITokenGenerator,
 		config: OtpConfig
 	) {
 		this.store = store;
 		this.userLookup = userLookup;
-		this.mailSender = mailSender;
+		this.delivery = delivery;
 		this.tokenGenerator = tokenGenerator;
 		this.config = config;
 	}
@@ -48,8 +48,8 @@ export class OtpAuthManager {
 		// Store the code
 		await this.store.createCode(id, normalizedEmail, code, expiresAt);
 
-		// Send email
-		await this.mailSender.sendOtpEmail(normalizedEmail, code);
+		// Deliver the OTP code
+		await this.delivery.deliver(normalizedEmail, code, this.config.codeTtlMinutes);
 
 		return { success: true };
 	}

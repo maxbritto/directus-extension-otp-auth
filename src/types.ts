@@ -26,8 +26,15 @@ export interface IUserLookup {
 	findByEmail(email: string): Promise<DirectusUser | null>;
 }
 
-export interface IMailSender {
-	sendOtpEmail(email: string, code: string): Promise<void>;
+export interface IOtpDelivery {
+	deliver(email: string, code: string, expiresInMinutes: number): Promise<void>;
+}
+
+export interface OtpDeliveryPayload {
+	email: string;
+	code: string;
+	expiresInMinutes: number;
+	delivered: boolean;
 }
 
 export interface RequestInfo {

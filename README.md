@@ -115,6 +115,60 @@ Set `OTP_EMAIL_TEMPLATE` to use a custom Directus Liquid email template. The tem
 
 If no template is set, a default HTML email is sent.
 
+## Custom Delivery (SMS, Push, etc.)
+
+By default, OTP codes are delivered via Directus's built-in email service. You can intercept delivery to use any channel (SMS, push notifications, webhooks) by registering a Directus filter hook for the `otp-auth.deliver` event.
+
+### How It Works
+
+1. When an OTP is requested, the extension emits a `otp-auth.deliver` filter event
+2. The filter payload contains `{ email, code, expiresInMinutes, delivered: false }`
+3. If any handler sets `delivered: true`, the built-in email is skipped
+4. If no handler modifies `delivered`, the built-in email sends as before
+
+### Creating a Custom Delivery Hook
+
+Create a separate Directus hook extension (or add to an existing one):
+
+```typescript
+import { defineHook } from '@directus/extensions-sdk';
+
+export default defineHook(({ filter }, { services }) => {
+    filter('otp-auth.deliver', async (payload, meta, context) => {
+        // context.database and context.schema are available for DB lookups
+        const phone = await lookupPhone(payload.email, context.database);
+        await sendSms(phone, `Your code: ${payload.code}`);
+        return { ...payload, delivered: true };
+    });
+});
+```
+
+### Payload Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `email` | `string` | The user's email address |
+| `code` | `string` | The 6-digit OTP code |
+| `expiresInMinutes` | `number` | How long the code is valid |
+| `delivered` | `boolean` | Set to `true` to skip built-in email |
+
+### Context Reference
+
+The filter handler receives the standard Directus event context:
+
+| Object | Field | Description |
+|--------|-------|-------------|
+| `meta` | `services` | Directus services (MailService, UsersService, etc.) |
+| `context` | `database` | Knex database instance |
+| `context` | `schema` | Current Directus schema |
+
+### Notes
+
+- Multiple handlers can chain (e.g., send SMS + log to audit table)
+- The `delivered` flag only controls the built-in email; all external handlers always run
+- Errors thrown by handlers propagate back to the caller (the OTP request will fail)
+- Handlers receive full Directus context, so they can query the database or use Directus services
+
 ## Database
 
 The extension auto-creates an `otp_codes` table on startup with the following schema:

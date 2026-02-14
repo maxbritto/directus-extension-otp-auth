@@ -1,7 +1,8 @@
 import { defineEndpoint } from '@directus/extensions-sdk';
 import jwt from 'jsonwebtoken';
 import { OtpAuthManager } from '../otp-auth-manager.js';
-import type { IOtpStore, IUserLookup, IMailSender, ITokenGenerator, OtpCode, DirectusUser, OtpConfig, RequestInfo } from '../types.js';
+import { createOtpDelivery } from '../otp-delivery.js';
+import type { IOtpStore, IUserLookup, ITokenGenerator, OtpCode, DirectusUser, OtpConfig, RequestInfo } from '../types.js';
 import type { Knex } from 'knex';
 
 function parseMilliseconds(value: string, defaultMs: number): number {
@@ -108,50 +109,6 @@ function createUserLookup(services: Record<string, any>, getSchema: () => Promis
 	};
 }
 
-function createMailSender(
-	services: Record<string, any>,
-	getSchema: () => Promise<any>,
-	env: Record<string, any>,
-	config: OtpConfig
-): IMailSender {
-	return {
-		async sendOtpEmail(email: string, code: string): Promise<void> {
-			const schema = await getSchema();
-			const mailService = new services.MailService({ schema });
-
-			const subject = (env['OTP_EMAIL_SUBJECT'] as string) || 'Your login code';
-			const templateName = env['OTP_EMAIL_TEMPLATE'] as string | undefined;
-
-			if (templateName) {
-				await mailService.send({
-					to: email,
-					subject,
-					template: {
-						name: templateName,
-						data: {
-							code,
-							expiry_minutes: config.codeTtlMinutes,
-						},
-					},
-				});
-			} else {
-				await mailService.send({
-					to: email,
-					subject,
-					html: `
-						<div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; text-align: center;">
-							<h2>Your login code</h2>
-							<p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 24px 0; font-family: monospace;">${code}</p>
-							<p>This code expires in ${config.codeTtlMinutes} minutes.</p>
-							<p style="color: #888; font-size: 12px; margin-top: 24px;">If you didn't request this code, you can safely ignore this email.</p>
-						</div>
-					`,
-				});
-			}
-		},
-	};
-}
-
 function createTokenGenerator(
 	database: Knex,
 	env: Record<string, any>,
@@ -228,7 +185,7 @@ function createTokenGenerator(
 export default defineEndpoint({
 	id: 'otp-auth',
 	handler: (router, context) => {
-		const { database, env, services, getSchema, logger } = context;
+		const { database, env, services, getSchema, logger, emitter } = context;
 
 		const config: OtpConfig = {
 			codeTtlMinutes: parseInt(env['OTP_CODE_TTL_MINUTES'] as string, 10) || 10,
@@ -238,9 +195,9 @@ export default defineEndpoint({
 
 		const store = createOtpStore(database);
 		const userLookup = createUserLookup(services, getSchema);
-		const mailSender = createMailSender(services, getSchema, env, config);
+		const delivery = createOtpDelivery({ emitter, database, services, getSchema, env, config, logger });
 		const tokenGenerator = createTokenGenerator(database, env);
-		const manager = new OtpAuthManager(store, userLookup, mailSender, tokenGenerator, config);
+		const manager = new OtpAuthManager(store, userLookup, delivery, tokenGenerator, config);
 
 		router.post('/request', async (req, res) => {
 			try {

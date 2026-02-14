@@ -1,5 +1,5 @@
 import { OtpAuthManager } from './otp-auth-manager';
-import type { IOtpStore, IUserLookup, IMailSender, ITokenGenerator, OtpCode, OtpConfig, RequestInfo } from './types';
+import type { IOtpStore, IUserLookup, IOtpDelivery, ITokenGenerator, OtpCode, OtpConfig, RequestInfo } from './types';
 
 function createMockStore(): jest.Mocked<IOtpStore> {
 	return {
@@ -18,9 +18,9 @@ function createMockUserLookup(): jest.Mocked<IUserLookup> {
 	};
 }
 
-function createMockMailSender(): jest.Mocked<IMailSender> {
+function createMockDelivery(): jest.Mocked<IOtpDelivery> {
 	return {
-		sendOtpEmail: jest.fn().mockResolvedValue(undefined),
+		deliver: jest.fn().mockResolvedValue(undefined),
 	};
 }
 
@@ -49,17 +49,17 @@ const DEFAULT_REQUEST_INFO: RequestInfo = {
 function createManager(overrides?: {
 	store?: jest.Mocked<IOtpStore>;
 	userLookup?: jest.Mocked<IUserLookup>;
-	mailSender?: jest.Mocked<IMailSender>;
+	delivery?: jest.Mocked<IOtpDelivery>;
 	tokenGenerator?: jest.Mocked<ITokenGenerator>;
 	config?: OtpConfig;
 }) {
 	const store = overrides?.store ?? createMockStore();
 	const userLookup = overrides?.userLookup ?? createMockUserLookup();
-	const mailSender = overrides?.mailSender ?? createMockMailSender();
+	const delivery = overrides?.delivery ?? createMockDelivery();
 	const tokenGenerator = overrides?.tokenGenerator ?? createMockTokenGenerator();
 	const config = overrides?.config ?? DEFAULT_CONFIG;
-	const manager = new OtpAuthManager(store, userLookup, mailSender, tokenGenerator, config);
-	return { manager, store, userLookup, mailSender, tokenGenerator };
+	const manager = new OtpAuthManager(store, userLookup, delivery, tokenGenerator, config);
+	return { manager, store, userLookup, delivery, tokenGenerator };
 }
 
 function makeOtpCode(overrides?: Partial<OtpCode>): OtpCode {
@@ -86,17 +86,18 @@ describe('OtpAuthManager', () => {
 				role: 'role-1',
 			});
 
-			const { manager, store, mailSender } = createManager({ userLookup });
+			const { manager, store, delivery } = createManager({ userLookup });
 
 			const result = await manager.requestOtp('user@example.com');
 
 			expect(result).toEqual({ success: true });
 			expect(store.invalidateAllForEmail).toHaveBeenCalledWith('user@example.com');
 			expect(store.createCode).toHaveBeenCalledTimes(1);
-			expect(mailSender.sendOtpEmail).toHaveBeenCalledTimes(1);
-			expect(mailSender.sendOtpEmail).toHaveBeenCalledWith(
+			expect(delivery.deliver).toHaveBeenCalledTimes(1);
+			expect(delivery.deliver).toHaveBeenCalledWith(
 				'user@example.com',
-				expect.stringMatching(/^\d{6}$/)
+				expect.stringMatching(/^\d{6}$/),
+				10
 			);
 		});
 
@@ -147,26 +148,27 @@ describe('OtpAuthManager', () => {
 				role: 'role-1',
 			});
 
-			const { manager, store, mailSender } = createManager({ userLookup });
+			const { manager, store, delivery } = createManager({ userLookup });
 
 			await manager.requestOtp('  User@Example.COM  ');
 
 			expect(userLookup.findByEmail).toHaveBeenCalledWith('user@example.com');
 			expect(store.invalidateAllForEmail).toHaveBeenCalledWith('user@example.com');
-			expect(mailSender.sendOtpEmail).toHaveBeenCalledWith(
+			expect(delivery.deliver).toHaveBeenCalledWith(
 				'user@example.com',
-				expect.any(String)
+				expect.any(String),
+				10
 			);
 		});
 
 		it('should return success true when user does not exist (no enumeration)', async () => {
-			const { manager, store, mailSender } = createManager();
+			const { manager, store, delivery } = createManager();
 
 			const result = await manager.requestOtp('unknown@example.com');
 
 			expect(result).toEqual({ success: true });
 			expect(store.createCode).not.toHaveBeenCalled();
-			expect(mailSender.sendOtpEmail).not.toHaveBeenCalled();
+			expect(delivery.deliver).not.toHaveBeenCalled();
 		});
 
 		it('should return success true and skip when rate limited', async () => {
@@ -179,7 +181,7 @@ describe('OtpAuthManager', () => {
 				role: 'role-1',
 			});
 
-			const { manager, mailSender } = createManager({ store, userLookup });
+			const { manager, delivery } = createManager({ store, userLookup });
 
 			const result = await manager.requestOtp('user@example.com');
 
@@ -187,7 +189,7 @@ describe('OtpAuthManager', () => {
 			// Should not look up user, create code, or send email when rate limited
 			expect(userLookup.findByEmail).not.toHaveBeenCalled();
 			expect(store.createCode).not.toHaveBeenCalled();
-			expect(mailSender.sendOtpEmail).not.toHaveBeenCalled();
+			expect(delivery.deliver).not.toHaveBeenCalled();
 		});
 
 		it('should use rateLimitSeconds from config', async () => {
